@@ -27,7 +27,8 @@ table(funder_summary$funder_type)
 funder_us_by_pct <- funder_summary %>%
   filter(country == "USA") %>%
   select(funder_name, country, total_articles, open_data_articles, open_data_pct) %>%
-  arrange(desc(open_data_pct))
+  arrange(desc(open_data_pct)) %>%
+  mutate(no = row_number(), .before = funder_name)
 
 write_csv(funder_us_by_pct, here("outputs_tables", "funder_us_by_pct_open_data.csv"))
 
@@ -47,7 +48,8 @@ funder_summary %>%
 funder_china_by_pct <- funder_summary %>%
   filter(country == "China") %>%
   select(funder_name, country, total_articles, open_data_articles, open_data_pct) %>%
-  arrange(desc(open_data_pct))
+  arrange(desc(open_data_pct)) %>%
+  mutate(no = row_number(), .before = funder_name)
 
 write_csv(funder_us_by_pct, here("outputs_tables", "funder_china_by_pct_open_data.csv"))
 
