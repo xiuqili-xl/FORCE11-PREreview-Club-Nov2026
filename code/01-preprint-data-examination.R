@@ -152,6 +152,24 @@ ggsave(filename = "figure2_reproduction.png", path = here("outputs_graphs"),
        width = 10, height = 6, units = "in", dpi = 300, bg = "white")
 
 
+## Explore Figure 2 as a lollipop graph ----
+ggplot(data = figure2_data,
+       mapping = aes(y = reorder(journal, open_data_pct))) +
+  geom_segment(mapping = aes(x = 0, xend = open_data_pct,
+                             yend = reorder(journal, open_data_pct))) +
+  geom_point(mapping = aes(x = open_data_pct, size = total_articles),
+             color = "darkblue") +
+  scale_x_continuous(limits = c(0, 65)) +
+  scale_y_discrete(labels = label_wrap(30), name = NULL) +
+  scale_fill_distiller(palette = "YlOrRd", direction = 1, transform = "log10") +
+  theme_bw() +
+  labs(title = "Explore lollipop graph for Figure 2",
+       subtitle = "(Larimore et al bioRxiv 2026)")
+
+ggsave(filename = "figure2_lollipop-graph.png", path = here("outputs_graphs"),
+       width = 6, height = 6, units = "in", dpi = 300, bg = "white")
+
+
 ## Reproduce Table 2 ----
 table2 <- journal_summary %>%
   filter(total_articles >= 1815) %>%
@@ -164,13 +182,27 @@ table2_md <- kable(table2, format = "markdown")
 writeLines(table2_md, here("outputs_tables", "rep_table1.md"))
 
 
+## Total ranking ----
+journal_summary %>%
+  arrange(desc(open_data_pct)) %>%
+  mutate(no = row_number()) %>%
+  select(no, journal, total_articles, open_data_pct, corrected_od) %>%
+  view()
+
+
 ## PLOS journals ----
 ## look for plos journals in the dataset, in preparation for comparison with PLOS OSI
-journal_summary %>%
+plos_article_count <- journal_summary %>%
   filter(str_detect(str_to_lower(journal), "plos")) %>%
   select(journal, total_articles, pdf_covered, xml_only) %>%
   mutate(pdf_coverage = pdf_covered / total_articles * 100, 
          total_count_match = (total_articles == pdf_covered + xml_only))
+
+write_csv(plos_article_count, here("outputs_tables", "exp_plos_count_in_corpus.csv"))
+
+plos_article_count_md <- kable(plos_article_count, format = "markdown")
+writeLines(plos_article_count_md, here("outputs_tables", "exp_plos_count_in_corpus.md"))
+
 ## pdf coverage for PLOS family of journals range between 35% - 50%, 
 ## which seems pretty low considering the entire family of journals is digital only..
 
