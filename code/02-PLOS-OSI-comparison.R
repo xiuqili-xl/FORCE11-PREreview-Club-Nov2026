@@ -66,9 +66,106 @@ comparator_filtered %>%
 
 
 # Analysis: Lawrimore et al vs PLOS-OSI ----
-# Since all PLOS journals are open access, we can directly compare the two datasets
+# Since all PLOS journals are open access, presumably, we can directly compare the two datasets
+
+## Import preprint dataset and filter for just plos data ----
+plos_preprint_df <- read_csv("https://raw.githubusercontent.com/nimh-dsst/osm-preprint-2026/refs/heads/develop/results/journals_summary_2024_2025.csv") %>%
+  filter(str_detect(str_to_lower(journal), "plos")) %>%
+  mutate(pdf_covered_pct = pdf_covered_od / pdf_covered * 100,
+         xml_only_pct = xml_only_od / xml_only * 100) %>%
+  select(journal, total_articles, open_data_pct, pdf_covered_pct, xml_only_pct) %>%
+  arrange(desc(total_articles))
+
+
+## Wrangle the PLOS OSI dataset ----
+## previously we already filtered based on study timeframe; we need to further aggregate data
+plos_osi_cleaned <- plos_filtered %>%
+  mutate(DOI_simplified = str_remove(DOI, "10.1371/journal."), .before = "Publication_Day") %>%
+  separate(col = DOI_simplified, into = c("Journal_Abbr", NA), sep = "\\.") 
+
+table(plos_osi_cleaned$Journal_Abbr)
+
+plos_osi_summary <- plos_osi_cleaned %>%
+  group_by(Journal_Abbr) %>%
+  mutate(Total_Pub = n()) %>%
+  group_by(Journal_Abbr, Total_Pub, Data_Shared) %>%
+  summarise(No_Pub = n()) %>%
+  ungroup() %>%
+  arrange(desc(Total_Pub), desc(Data_Shared)) %>%
+  pivot_wider(id_cols = c(Journal_Abbr, Total_Pub), 
+              names_from = Data_Shared, names_prefix = "Data_Shared_",
+              values_from = "No_Pub") 
+
+## Combine the two datasets ----
+plos_comparison <- plos_osi_summary %>%
+  select(-Data_Shared_FALSE) %>%
+  mutate(Data_Shared_Pct = Data_Shared_TRUE / Total_Pub * 100) %>%
+  mutate(Journal = case_when(Journal_Abbr == "pone" ~ "PLoS ONE",
+                             Journal_Abbr == "pgph" ~ "PLOS Global Public Health",
+                             Journal_Abbr == "pcbi" ~ "PLoS Computational Biology",
+                             Journal_Abbr == "pntd" ~ "PLoS neglected tropical diseases",
+                             Journal_Abbr == "ppat" ~ "PLoS Pathogens",
+                             Journal_Abbr == "pbio" ~ "PLoS Biology",
+                             Journal_Abbr == "pgen" ~ "PLoS Genetics",
+                             Journal_Abbr == "pdig" ~ "PLOS Digital Health" ,
+                             Journal_Abbr == "pmed" ~ "PLoS Medicine"),
+         .before = Journal_Abbr) %>%
+  filter(!is.na(Journal)) %>%
+  left_join(plos_preprint_df, by = join_by(Journal == journal)) %>%
+  mutate(No = row_number()) %>%
+  select(No, Journal, Journal_Abbr, PLOS_total = Total_Pub, PLOS_pct = Data_Shared_Pct,
+         preprint_total = total_articles, preprint_obs_pct = open_data_pct, 
+         preprint_pdf_pct = pdf_covered_pct, preprint_xml_pct = xml_only_pct)
+
+
+## Compare preprint corpus ----
+plos_comp_corpus_size <- plos_comparison %>%
+  select(No, Journal, Journal_Abbr, PLOS_total, preprint_total) %>%
+  pivot_longer(cols = c("PLOS_total", "preprint_total"), names_to = "Data_Source", values_to = "No_Pub") %>%
+  mutate(Data_Source = case_when(Data_Source == "PLOS_total" ~ "PLOS OSI",
+                                 Data_Source == "preprint_total" ~ "Lawrimore et al"))
+
+ggplot(data = plos_comp_corpus_size) +
+  geom_segment(mapping = aes(x = 0, xend = No_Pub, y = Data_Source, yend = Data_Source,
+                             color = Data_Source),
+               linewidth = 1) +
+  geom_point(mapping = aes(x = No_Pub, y = Data_Source, color = Data_Source),
+             size = 3.5) +
+  facet_wrap(~reorder(Journal_Abbr, No), ncol = 1, strip.position = "right") +
+  scale_x_log10() +
+  scale_y_discrete(name = NULL) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  labs(title = "Comparison of Lawrimore et al data\nto PLOS OSI dataset",
+       subtitle = "Corpus volumne within the timeframe")
+
+ggsave(filename = "comp_plos-corpus-volume.png", path = here("outputs_graphs"),
+       width = 4, height = 6, units = "in", dpi = 300, bg = "white")
 
 
 
+## Compare Open Data rates ----
+plos_comp_open_data <- plos_comparison %>%
+  select(-PLOS_total, -preprint_total) %>%
+  pivot_longer(cols = -c("No", "Journal", "Journal_Abbr"), 
+               names_to = "Group", values_to = "Percentage") %>%
+  mutate(Data_Source = case_when(str_detect(Group, "PLOS") ~ "PLOS OSI",
+                                 str_detect(Group, "preprint") ~ "Lawrimore et al"),
+         Group = factor(Group, levels = c("PLOS_pct", "preprint_obs_pct", "preprint_pdf_pct", "preprint_xml_pct")))
 
+ggplot(data = plos_comp_open_data) +
+  geom_segment(mapping = aes(x = 0, xend = Percentage, y = Group, yend = Group,
+                             color = Data_Source),
+               linewidth = 0.8) +
+  geom_point(mapping = aes(x = Percentage, y = Group, color = Data_Source),
+             size = 3) +
+  facet_wrap(~reorder(Journal_Abbr, No), ncol = 1, strip.position = "right") +
+  scale_x_continuous(expand = 0.01, limits = c(0, 102)) +
+  scale_y_discrete(limits = rev, name = NULL) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  labs(title = "Comparison of Lawrimore et al data\nto PLOS OSI dataset",
+       subtitle = "Data sharing rates within the timeframe")
 
+ggsave(filename = "comp_plos-data-sharing-rates.png", path = here("outputs_graphs"),
+       width = 4, height = 10, units = "in", dpi = 300, bg = "white")
